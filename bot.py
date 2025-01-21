@@ -15,16 +15,7 @@ if not bot_token:
 with open("config.json", "r") as file:
     config = json.load(file)
 
-# Load selectors from selectors.json
-with open("selectors/selectors.json", "r") as file:
-    selectors = json.load(file)
-
-bot_token = config.get("bot_token")  # Load bot token from config.json
 channel_id = int(config["channel_id"])  # Ensure channel_id is an integer
-
-# Ensure bot token exists
-if not bot_token:
-    raise ValueError("❌ ERROR: Missing DISCORD_BOT_TOKEN! Check your config.json file.")
 
 # Initialize bot
 intents = discord.Intents.default()
@@ -108,23 +99,22 @@ async def add_product(ctx):
 async def check_price(ctx, product_name: str):
     """Check the current price of a product."""
     products = load_products()
-    if product_name not in products:
+    if (product := products.get(product_name)) is None:
         await ctx.send(f"⚠️ Product '{product_name}' not found.")
         return
 
-    details = products[product_name]
-    selector = details.get("css_selector")
-    price = await fetch_price_dynamic(details["url"], selector)
+    selector = product.get("css_selector")
+    price = await fetch_price_dynamic(product["url"], selector)
 
     if price:
         try:
             cleaned_price = float(price)
-            target_price = float(details["target_price"]) if details["target_price"] else None
+            target_price = product.get("target_price")
             response = (
                 f"**{product_name.capitalize()}**\n"
                 f"💲 Current Price: ${cleaned_price:.2f}\n"
                 f"🎯 Target Price: ${target_price:.2f}\n" if target_price else ""
-                f"🔗 URL: {details['url']}"
+                f"🔗 URL: {product['url']}"
             )
             await ctx.send(response)
         except ValueError:
