@@ -3,6 +3,13 @@ from discord.ext import commands, tasks
 import json
 import asyncio
 from tracker import fetch_price_dynamic, load_products, save_products
+import os
+
+# Retrieve the token from environment variables
+bot_token = os.getenv('bot_token')
+
+if not bot_token:
+    raise ValueError("❌ ERROR: Missing bot_token! Check your environment variables.")
 
 # Load config from config.json
 with open("config.json", "r") as file:
