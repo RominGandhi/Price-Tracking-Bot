@@ -1,14 +1,7 @@
-
 {
     "keyboard": {
         "url": "https://www.bestbuy.ca/en-ca/product/corsair-k65-mini-backlit-mechanical-cherry-mx-speed-rgb-silver-gaming-keyboard-black/15316318",
         "css_selector": "span[data-automation='product-price']",
         "target_price": 99.99
-    },
-    "PS5_Controller": {
-        "url": "https://www.bestbuy.ca/en-ca/product/playstation-5-dualsense-wireless-controller-midnight-black/17905836",
-        "css_selector": "span[data-automation-id='price']",
-        "target_price": 70.0
     }
-
 }

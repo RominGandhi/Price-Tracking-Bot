@@ -1,0 +1,16 @@
+{
+    "walmart.ca": {
+        "price": "span[itemprop='price']"
+    },
+    "amazon.ca": {
+        "price_whole": "span.a-price-whole",
+        "price_fraction": "span.a-price-fraction"
+    },
+    "bestbuy.ca": {
+        "price": "span[data-automation='product-price']"
+    },
+    "sephora.com": {
+        "price": "p[data-comp='Price'] b"
+    }
+}
+ 
