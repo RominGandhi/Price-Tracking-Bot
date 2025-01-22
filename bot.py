@@ -2,25 +2,19 @@ import discord
 from discord.ext import commands, tasks
 import json
 import asyncio
-from tracker import fetch_price_dynamic, load_products, save_products
 import os
-
+from tracker import fetch_price_dynamic, load_products, save_products
 
 # Load selectors safely
 selectors = {}
-
 try:
     with open("selectors/selectors.json", "r") as file:
         selectors = json.load(file)
-except FileNotFoundError:
-    print("❌ ERROR: selectors.json not found! Make sure it's inside the 'selectors/' folder.")
-except json.JSONDecodeError:
-    print("❌ ERROR: selectors.json contains invalid JSON. Fix formatting and retry.")
-
+except (FileNotFoundError, json.JSONDecodeError):
+    print("❌ ERROR: Invalid or missing selectors.json! Ensure it exists and is properly formatted.")
 
 # Retrieve the token from environment variables
-bot_token = os.getenv('bot_token')
-
+bot_token = os.getenv("bot_token")
 if not bot_token:
     raise ValueError("❌ ERROR: Missing bot_token! Check your environment variables.")
 
@@ -36,8 +30,8 @@ intents.message_content = True  # Required for reading messages
 intents.members = True  # Enable member events (for welcoming users)
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Track users who received a welcome message
-sent_welcome = set()
+# Track active commands to prevent duplicate execution
+active_commands = set()
 
 ### 📌 EVENT: BOT READY ###
 @bot.event
@@ -53,27 +47,29 @@ async def on_ready():
     if not price_checker.is_running():
         price_checker.start()
 
+
 ### 📌 COMMAND: ADD PRODUCT ###
 @bot.command()
 async def add_product(ctx):
     """Guide the user to add a product step-by-step, preventing multiple executions."""
-    
+
     def check(msg):
         return msg.author == ctx.author and msg.channel == ctx.channel
-    
+
     # Prevent duplicate execution
-    if hasattr(ctx, "is_running") and ctx.is_running:
+    if ctx.author.id in active_commands:
+        await ctx.send("⚠️ **You already have an active add_product command!**")
         return
-    ctx.is_running = True  # Mark as running
+    active_commands.add(ctx.author.id)  # Mark as running
 
     try:
         questions = [
             "🛒 **Enter the store name** (e.g., walmart.ca, amazon.ca, bestbuy.ca):",
             "📦 **Enter the product name:**",
             "🔗 **Enter the product URL:**",
-            "💲 **Enter your target price:**"
+            "💲 **Enter your target price:**",
         ]
-        
+
         answers = []
         for question in questions:
             await ctx.send(question)
@@ -87,7 +83,7 @@ async def add_product(ctx):
         if store not in selectors:
             await ctx.send(f"⚠️ **No selector found for {store}.** Add it to `selectors.json`.")
             return
-        
+
         # Fetch price
         selector = selectors[store]["price"]
         price = await fetch_price_dynamic(url, selector)
@@ -108,7 +104,7 @@ async def add_product(ctx):
         await ctx.send("⏳ **You took too long to respond.** Try again!")
 
     finally:
-        ctx.is_running = False  # Mark as completed
+        active_commands.discard(ctx.author.id)  # Mark as completed
 
 
 ### 📌 COMMAND: CHECK PRODUCT PRICE ###
@@ -117,7 +113,7 @@ async def check_price(ctx, product_name: str):
     """Check the current price of a product."""
     products = load_products()
     if (product := products.get(product_name)) is None:
-        await ctx.send(f"⚠️ Product '{product_name}' not found.")
+        await ctx.send(f"⚠️ **Product '{product_name}' not found.**")
         return
 
     selector = product.get("css_selector")
@@ -127,17 +123,18 @@ async def check_price(ctx, product_name: str):
         try:
             cleaned_price = float(price)
             target_price = product.get("target_price")
-            response = (
-                f"**{product_name.capitalize()}**\n"
-                f"💲 Current Price: ${cleaned_price:.2f}\n"
-                f"🎯 Target Price: ${target_price:.2f}\n" if target_price else ""
-                f"🔗 URL: {product['url']}"
-            )
+            response = f"""**{product_name.capitalize()}**
+            💲 **Current Price:** ${cleaned_price:.2f}
+            🎯 **Target Price:** ${target_price:.2f}""" if target_price else ""
+
+            response += f"\n🔗 [Product Link]({product['url']})"
             await ctx.send(response)
+
         except ValueError:
-            await ctx.send(f"⚠️ Could not parse the price for '{product_name}'. Raw value: {price}")
+            await ctx.send(f"⚠️ **Could not parse the price for '{product_name}'.** Raw value: {price}")
     else:
-        await ctx.send(f"⚠️ Could not fetch the price for '{product_name}'.")
+        await ctx.send(f"⚠️ **Could not fetch the price for '{product_name}'.**")
+
 
 ### 📌 AUTOMATED TASK: PRICE CHECKER ###
 @tasks.loop(minutes=30)
@@ -158,10 +155,11 @@ async def price_checker():
                         f"🔥 **Price Drop Alert!** 🔥\n"
                         f"**{product_name.capitalize()}** is now ${cleaned_price:.2f}!\n"
                         f"🎯 Target Price: ${details['target_price']:.2f}\n"
-                        f"🔗 URL: {details['url']}"
+                        f"🔗 [Product Link]({details['url']})"
                     )
             except ValueError:
-                print(f"⚠️ Error converting price '{price}' for {product_name}.")
+                print(f"⚠️ **Error converting price '{price}' for {product_name}.**")
+
 
 # Run bot
 bot.run(bot_token)
