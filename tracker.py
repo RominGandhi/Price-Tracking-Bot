@@ -26,7 +26,7 @@ async def fetch_price_dynamic(url, selector=None):
     :return: Extracted price as a string or None if not found.
     """
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=true)  # Set to False for debugging
+        browser = await p.chromium.launch(headless=True)  # Set to False for debugging
         page = await browser.new_page()
 
         try:
