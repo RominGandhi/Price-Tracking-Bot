@@ -32,10 +32,16 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Track active commands to prevent duplicate execution
 active_commands = set()
+bot_started = False  # Prevent multiple instances
 
 ### 📌 EVENT: BOT READY ###
 @bot.event
 async def on_ready():
+    global bot_started
+    if bot_started:
+        return  # Prevent multiple executions
+    bot_started = True  # Set flag to True
+
     print(f"✅ Bot logged in as {bot.user}")
     print(f"Bot is in these servers: {[guild.name for guild in bot.guilds]}")  # Debugging
     try:
@@ -104,7 +110,7 @@ async def add_product(ctx):
         await ctx.send("⏳ **You took too long to respond.** Try again!")
 
     finally:
-        active_commands.discard(ctx.author.id)  # Mark as completed
+        active_commands.discard(ctx.author.id)  # Remove user to allow new commands
 
 
 ### 📌 COMMAND: CHECK PRODUCT PRICE ###
