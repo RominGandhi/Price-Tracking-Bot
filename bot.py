@@ -5,6 +5,19 @@ import asyncio
 from tracker import fetch_price_dynamic, load_products, save_products
 import os
 
+
+# Load selectors safely
+selectors = {}
+
+try:
+    with open("selectors/selectors.json", "r") as file:
+        selectors = json.load(file)
+except FileNotFoundError:
+    print("❌ ERROR: selectors.json not found! Make sure it's inside the 'selectors/' folder.")
+except json.JSONDecodeError:
+    print("❌ ERROR: selectors.json contains invalid JSON. Fix formatting and retry.")
+
+
 # Retrieve the token from environment variables
 bot_token = os.getenv('bot_token')
 
