@@ -56,56 +56,51 @@ async def on_ready():
 ### 📌 COMMAND: ADD PRODUCT ###
 @bot.command()
 async def add_product(ctx):
-    """Guide the user to add a product step-by-step."""
-    await ctx.send("🛒 Enter the store name (e.g., walmart.ca, amazon.ca, bestbuy.ca):")
-    
+    """Guide the user to add a product step-by-step, avoiding duplicate prompts."""
     def check(msg):
         return msg.author == ctx.author and msg.channel == ctx.channel
     
     try:
-        store_msg = await bot.wait_for("message", check=check, timeout=30)
-        store = store_msg.content.strip().lower()
+        questions = [
+            "🛒 Enter the store name (e.g., walmart.ca, amazon.ca, bestbuy.ca):",
+            "📦 Enter the product name:",
+            "🔗 Enter the product URL:",
+            "💲 Enter your target price:"
+        ]
         
+        answers = []
+        for question in questions:
+            await ctx.send(question)
+            msg = await bot.wait_for("message", check=check, timeout=30)
+            answers.append(msg.content.strip())
+
+        store, product_name, url, target_price = answers
+        target_price = float(target_price)
+
+        # Validate store
         if store not in selectors:
             await ctx.send(f"⚠️ No selector found for {store}. Add it to selectors.json.")
             return
-
-        await ctx.send("📦 Enter the product name:")
-        product_msg = await bot.wait_for("message", check=check, timeout=30)
-        product_name = product_msg.content.strip()
-
-        await ctx.send("🔗 Enter the product URL:")
-        url_msg = await bot.wait_for("message", check=check, timeout=30)
-        url = url_msg.content.strip()
-
-        await ctx.send("📊 Fetching current price...")
+        
+        # Fetch price
         selector = selectors[store]["price"]
-        
-        # Fetch price dynamically
         price = await fetch_price_dynamic(url, selector)
-        
+
         if not price:
             await ctx.send("⚠️ Could not fetch the current price. Please check the URL.")
             return
-        
-        cleaned_price = float(price)
-        
-        await ctx.send(f"💲 Current price is: ${cleaned_price:.2f}\n🎯 Enter your target price:")
-        target_msg = await bot.wait_for("message", check=check, timeout=30)
-        target_price = float(target_msg.content.strip())
 
+        # Save product
         products = load_products()
-        products[product_name] = {
-            "url": url,
-            "css_selector": selector,
-            "target_price": target_price
-        }
+        products[product_name] = {"url": url, "css_selector": selector, "target_price": target_price}
         save_products(products)
-        
-        await ctx.send(f"✅ Product '{product_name}' added with target price ${target_price:.2f}.")
+
+        # Confirmation message
+        await ctx.send(f"✅ **{product_name} added!**\n💲 Current Price: ${price}\n🎯 Target Price: ${target_price}")
 
     except asyncio.TimeoutError:
         await ctx.send("⏳ You took too long to respond. Try again!")
+
 
 ### 📌 COMMAND: CHECK PRODUCT PRICE ###
 @bot.command()
