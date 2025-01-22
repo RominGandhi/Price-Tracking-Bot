@@ -56,16 +56,22 @@ async def on_ready():
 ### 📌 COMMAND: ADD PRODUCT ###
 @bot.command()
 async def add_product(ctx):
-    """Guide the user to add a product step-by-step, avoiding duplicate prompts."""
+    """Guide the user to add a product step-by-step, preventing multiple executions."""
+    
     def check(msg):
         return msg.author == ctx.author and msg.channel == ctx.channel
     
+    # Prevent duplicate execution
+    if hasattr(ctx, "is_running") and ctx.is_running:
+        return
+    ctx.is_running = True  # Mark as running
+
     try:
         questions = [
-            "🛒 Enter the store name (e.g., walmart.ca, amazon.ca, bestbuy.ca):",
-            "📦 Enter the product name:",
-            "🔗 Enter the product URL:",
-            "💲 Enter your target price:"
+            "🛒 **Enter the store name** (e.g., walmart.ca, amazon.ca, bestbuy.ca):",
+            "📦 **Enter the product name:**",
+            "🔗 **Enter the product URL:**",
+            "💲 **Enter your target price:**"
         ]
         
         answers = []
@@ -79,7 +85,7 @@ async def add_product(ctx):
 
         # Validate store
         if store not in selectors:
-            await ctx.send(f"⚠️ No selector found for {store}. Add it to selectors.json.")
+            await ctx.send(f"⚠️ **No selector found for {store}.** Add it to `selectors.json`.")
             return
         
         # Fetch price
@@ -87,7 +93,7 @@ async def add_product(ctx):
         price = await fetch_price_dynamic(url, selector)
 
         if not price:
-            await ctx.send("⚠️ Could not fetch the current price. Please check the URL.")
+            await ctx.send("⚠️ **Could not fetch the current price.** Please check the URL.")
             return
 
         # Save product
@@ -96,10 +102,13 @@ async def add_product(ctx):
         save_products(products)
 
         # Confirmation message
-        await ctx.send(f"✅ **{product_name} added!**\n💲 Current Price: ${price}\n🎯 Target Price: ${target_price}")
+        await ctx.send(f"✅ **{product_name} added!**\n💲 **Current Price:** ${price}\n🎯 **Target Price:** ${target_price}")
 
     except asyncio.TimeoutError:
-        await ctx.send("⏳ You took too long to respond. Try again!")
+        await ctx.send("⏳ **You took too long to respond.** Try again!")
+
+    finally:
+        ctx.is_running = False  # Mark as completed
 
 
 ### 📌 COMMAND: CHECK PRODUCT PRICE ###
