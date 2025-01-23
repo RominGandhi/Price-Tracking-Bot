@@ -56,7 +56,6 @@ async def on_ready():
 
 ### 📌 COMMAND: ADD PRODUCT ###
 @bot.command()
-@bot.command()
 async def add_product(ctx):
     """Guide the user to add a product step-by-step, storing the user ID."""
     
