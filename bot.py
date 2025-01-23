@@ -56,17 +56,17 @@ async def on_ready():
 
 ### 📌 COMMAND: ADD PRODUCT ###
 @bot.command()
+@bot.command()
 async def add_product(ctx):
-    """Guide the user to add a product step-by-step, preventing multiple executions."""
-
+    """Guide the user to add a product step-by-step, storing the user ID."""
+    
     def check(msg):
         return msg.author == ctx.author and msg.channel == ctx.channel
 
-    # Prevent duplicate execution
     if ctx.author.id in active_commands:
         await ctx.send("⚠️ **You already have an active add_product command!**")
         return
-    active_commands.add(ctx.author.id)  # Mark as running
+    active_commands.add(ctx.author.id)
 
     try:
         questions = [
@@ -85,39 +85,34 @@ async def add_product(ctx):
         store, product_name, url, target_price = answers
         target_price = float(target_price)
 
-        # Validate store
         if store not in selectors:
             await ctx.send(f"⚠️ **No selector found for {store}.** Add it to `selectors.json`.")
             return
 
-        # Fetch price
         selector = selectors[store]["price"]
         price = await fetch_price_dynamic(url, selector)
-        if price:
-            try:
-                price = round(float(price), 2)  # Ensure correct formatting
-            except ValueError:
-                await ctx.send("⚠️ **Error: Price value is invalid.**")
-                return
-
 
         if not price:
             await ctx.send("⚠️ **Could not fetch the current price.** Please check the URL.")
             return
 
-        # Save product
         products = load_products()
-        products[product_name] = {"url": url, "css_selector": selector, "target_price": target_price}
+        products[product_name] = {
+            "url": url,
+            "css_selector": selector,
+            "target_price": target_price,
+            "user_id": ctx.author.id  # Store the user ID
+        }
         save_products(products)
 
-        # Confirmation message
-        await ctx.send(f"✅ **{product_name} added!**\n💲 **Current Price:** ${price}\n🎯 **Target Price:** ${target_price}")
+        await ctx.send(f"✅ **{ctx.author.mention} {product_name} added!**\n💲 **Current Price:** ${price}\n🎯 **Target Price:** ${target_price}")
 
     except asyncio.TimeoutError:
         await ctx.send("⏳ **You took too long to respond.** Try again!")
 
     finally:
-        active_commands.discard(ctx.author.id)  # Remove user to allow new commands
+        active_commands.discard(ctx.author.id)
+
 
 
 ### 📌 COMMAND: CHECK PRODUCT PRICE ###
@@ -162,16 +157,24 @@ async def price_checker():
 
         if price:
             try:
-                cleaned_price = round(float(price), 2)  # Ensure rounded price
-                if details.get("target_price") and cleaned_price <= details["target_price"]:
+                cleaned_price = float(price)
+                target_price = float(details["target_price"])
+                
+                # If price is at or below target price, send alert
+                if cleaned_price <= target_price:
+                    user_id = details.get("user_id")  # Retrieve stored user ID (add this when adding product)
+                    
+                    mention = f"<@{user_id}>" if user_id else ""  # Format mention
                     await channel.send(
-                        f"🔥 **Price Drop Alert!** 🔥\n"
-                        f"**{product_name.capitalize()}** is now ${cleaned_price:.2f}!\n"
-                        f"🎯 Target Price: ${details['target_price']:.2f}\n"
+                        f"🔥 **{mention} Price Drop Alert!** 🔥\n"
+                        f"**{product_name.capitalize()}** is now **${cleaned_price:.2f}!**\n"
+                        f"🎯 **Target Price:** ${target_price:.2f}\n"
                         f"🔗 [Product Link]({details['url']})"
                     )
             except ValueError:
                 print(f"⚠️ **Error converting price '{price}' for {product_name}.**")
+
+
 
 
 # Run bot
