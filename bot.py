@@ -93,6 +93,13 @@ async def add_product(ctx):
         # Fetch price
         selector = selectors[store]["price"]
         price = await fetch_price_dynamic(url, selector)
+        if price:
+            try:
+                price = round(float(price), 2)  # Ensure correct formatting
+            except ValueError:
+                await ctx.send("⚠️ **Error: Price value is invalid.**")
+                return
+
 
         if not price:
             await ctx.send("⚠️ **Could not fetch the current price.** Please check the URL.")
@@ -127,7 +134,7 @@ async def check_price(ctx, product_name: str):
 
     if price:
         try:
-            cleaned_price = float(price)
+            cleaned_price = round(float(price), 2)  # Ensure rounded price
             target_price = product.get("target_price")
             response = f"""**{product_name.capitalize()}**
             💲 **Current Price:** ${cleaned_price:.2f}
@@ -155,7 +162,7 @@ async def price_checker():
 
         if price:
             try:
-                cleaned_price = float(price)
+                cleaned_price = round(float(price), 2)  # Ensure rounded price
                 if details.get("target_price") and cleaned_price <= details["target_price"]:
                     await channel.send(
                         f"🔥 **Price Drop Alert!** 🔥\n"
