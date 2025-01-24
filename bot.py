@@ -142,23 +142,14 @@ async def add_product(ctx):
             except ValueError:
                 await ctx.send("⚠️ **Invalid price! Please enter a valid number.**")
 
-        # ✅ Fetch Price
-        selector = selectors[store]["price"]
-        price = await fetch_price_dynamic(url, selector)
-
-        if not price:
-            await ctx.send("⚠️ **Could not fetch the current price.** Please check the URL.")
-            return
-
         # ✅ Save to Database
         c.execute("""
             INSERT INTO products (user_id, store, product_name, url, css_selector, target_price)
             VALUES (%s, %s, %s, %s, %s, %s)
-        """, (ctx.author.id, store, answers["product_name"], answers["url"], selector, answers["target_price"]))
+        """, (ctx.author.id, store, answers["product_name"], answers["url"], selectors[store]["price"], answers["target_price"]))
         conn.commit()
 
-        # ✅ Confirmation Message
-        await ctx.send(f"✅ **{ctx.author.mention} {answers['product_name']} added!**\n💲 **Current Price:** ${price}\n🎯 **Target Price:** ${answers['target_price']}")
+        await ctx.send(f"✅ **{ctx.author.mention} {answers['product_name']} added!**\n🎯 **Target Price:** ${answers['target_price']}")
 
     except asyncio.TimeoutError:
         await ctx.send("⏳ **You took too long to respond.** Try again!")
@@ -167,13 +158,33 @@ async def add_product(ctx):
         active_commands.discard(ctx.author.id)
 
 
-### 📌 AUTOMATED TASK: PRICE CHECKER ###
+### 📌 COMMAND: CHECK PRICE ###
+@bot.command()
+async def check_price(ctx, product_name: str):
+    """Allow users to manually check the current price of their saved product."""
+    c.execute("SELECT url, css_selector FROM products WHERE user_id = %s AND product_name ILIKE %s", 
+              (ctx.author.id, product_name))
+    product = c.fetchone()
+
+    if not product:
+        await ctx.send(f"⚠️ **No product found with the name '{product_name}' for you.**")
+        return
+
+    url, selector = product
+    price = await fetch_price_dynamic(url, selector)
+
+    if price:
+        await ctx.send(f"✅ **{ctx.author.mention} The current price of '{product_name}' is:** 💲${price:.2f}\n🔗 [Product Link]({url})")
+    else:
+        await ctx.send(f"⚠️ **Could not fetch the price for '{product_name}'.** Please check the URL or try again later.")
+
+
+### 📌 AUTOMATED PRICE CHECK ###
 @tasks.loop(minutes=30)
 async def price_checker():
-    """Automatically check product prices and notify if below target."""
-    channel = await bot.fetch_channel(channel_id)  # Fetch channel
+    """Automatically check product prices and notify if below or at the target price."""
+    channel = await bot.fetch_channel(channel_id)
 
-    # ✅ Retrieve products from database
     c.execute("SELECT * FROM products")
     products = c.fetchall()
 
@@ -182,28 +193,20 @@ async def price_checker():
         price = await fetch_price_dynamic(url, css_selector)
 
         if price:
-            cleaned_price = float(price)
-
-            # ✅ If price drops below target, notify user
-            if cleaned_price <= target_price:
-                mention = f"<@{user_id}>"
-                await channel.send(
-                    f"🔥 **{mention} Price Drop Alert!** 🔥\n"
-                    f"**{product_name.capitalize()}** is now **${cleaned_price:.2f}!**\n"
-                    f"🎯 **Target Price:** ${target_price:.2f}\n"
-                    f"🔗 [Product Link]({url})"
-                )
+            mention = f"<@{user_id}>"
+            if price < target_price:
+                await channel.send(f"🔥 **{mention} Price Drop Alert!** {product_name} is now ${price:.2f}!\n🔗 {url}")
+            elif price == target_price:
+                await channel.send(f"🎯 **{mention} Your target price matched!** {product_name} is now ${price:.2f}!\n🔗 {url}")
 
 
-### 🛑 COMMAND: SHUTDOWN BOT (Owner Only) ###
+### 🛑 SHUTDOWN BOT ###
 @bot.command()
 async def shutdown(ctx):
-    """Allow the bot owner to safely shut down the bot."""
     if ctx.author.id != YOUR_DISCORD_USER_ID:
-        await ctx.send("❌ **You do not have permission to shut down the bot.**")
+        await ctx.send("❌ You don't have permission to shut down the bot.")
         return
-
-    await ctx.send("🛑 **Shutting down bot...**")
+    await ctx.send("🛑 Shutting down bot...")
     await bot.close()
 
 
