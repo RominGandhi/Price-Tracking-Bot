@@ -3,11 +3,11 @@ from discord.ext import commands, tasks
 import json
 import asyncio
 import os
-import sqlite3
+import psycopg2
 import re
-from tracker import fetch_price_dynamic
+from tracker import fetch_price_dynamic  # Ensure this module is correctly implemented
 
-# Load selectors safely
+# ✅ Load selectors safely
 selectors = {}
 try:
     with open("selectors/selectors.json", "r") as file:
@@ -15,53 +15,55 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
     print("❌ ERROR: Invalid or missing selectors.json! Ensure it exists and is properly formatted.")
 
-# Retrieve the token from environment variables
+# ✅ Retrieve bot token from environment variables
 bot_token = os.getenv("bot_token")
 if not bot_token:
     raise ValueError("❌ ERROR: Missing bot_token! Check your environment variables.")
 
-# Load config from config.json
+# ✅ Retrieve database connection URL from environment variables
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("❌ ERROR: Missing DATABASE_URL! Check Railway environment variables.")
+
+# ✅ Connect to PostgreSQL Database
+try:
+    conn = psycopg2.connect(DATABASE_URL)
+    c = conn.cursor()
+    print("✅ Connected to PostgreSQL!")
+
+    # ✅ Create table if it does not exist
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS products (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
+            store TEXT,
+            product_name TEXT,
+            url TEXT,
+            css_selector TEXT,
+            target_price REAL
+        )
+    """)
+    conn.commit()
+
+except Exception as e:
+    print("❌ Database connection failed:", e)
+    exit(1)  # Exit if the database connection fails
+
+# ✅ Load config from config.json
 with open("config.json", "r") as file:
     config = json.load(file)
 
 channel_id = int(config["channel_id"])  # Ensure channel_id is an integer
 
-# Initialize bot
+# ✅ Initialize bot
 intents = discord.Intents.default()
 intents.message_content = True  # Required for reading messages
 intents.members = True  # Enable member events (for welcoming users)
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Track active commands to prevent duplicate execution
+# ✅ Track active commands to prevent duplicate execution
 active_commands = set()
 bot_started = False  # Prevent multiple instances
-
-# ✅ Database Connection
-import psycopg2
-
-DATABASE_URL = os.getenv("DATABASE_URL")  # Ensure it's set in Railway
-
-try:
-    conn = psycopg2.connect(DATABASE_URL)
-    c = conn.cursor()
-    print("✅ Connected to PostgreSQL!")
-except Exception as e:
-    print("❌ Database connection failed:", e)
-
-
-# ✅ Create Table if Not Exists
-c.execute("""
-    CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        store TEXT,
-        product_name TEXT,
-        url TEXT,
-        css_selector TEXT,
-        target_price REAL
-    )
-""")
-conn.commit()
 
 
 ### 📌 EVENT: BOT READY ###
@@ -151,7 +153,7 @@ async def add_product(ctx):
         # ✅ Save to Database
         c.execute("""
             INSERT INTO products (user_id, store, product_name, url, css_selector, target_price)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """, (ctx.author.id, store, answers["product_name"], answers["url"], selector, answers["target_price"]))
         conn.commit()
 
@@ -180,27 +182,24 @@ async def price_checker():
         price = await fetch_price_dynamic(url, css_selector)
 
         if price:
-            try:
-                cleaned_price = float(price)
+            cleaned_price = float(price)
 
-                # ✅ If price drops below target, notify user
-                if cleaned_price <= target_price:
-                    mention = f"<@{user_id}>"  # Mention user
-                    await channel.send(
-                        f"🔥 **{mention} Price Drop Alert!** 🔥\n"
-                        f"**{product_name.capitalize()}** is now **${cleaned_price:.2f}!**\n"
-                        f"🎯 **Target Price:** ${target_price:.2f}\n"
-                        f"🔗 [Product Link]({url})"
-                    )
-            except ValueError:
-                print(f"⚠️ **Error converting price '{price}' for {product_name}.**")
+            # ✅ If price drops below target, notify user
+            if cleaned_price <= target_price:
+                mention = f"<@{user_id}>"
+                await channel.send(
+                    f"🔥 **{mention} Price Drop Alert!** 🔥\n"
+                    f"**{product_name.capitalize()}** is now **${cleaned_price:.2f}!**\n"
+                    f"🎯 **Target Price:** ${target_price:.2f}\n"
+                    f"🔗 [Product Link]({url})"
+                )
 
 
 ### 🛑 COMMAND: SHUTDOWN BOT (Owner Only) ###
 @bot.command()
 async def shutdown(ctx):
     """Allow the bot owner to safely shut down the bot."""
-    if ctx.author.id != YOUR_DISCORD_USER_ID:  # Replace with your Discord ID
+    if ctx.author.id != YOUR_DISCORD_USER_ID:
         await ctx.send("❌ **You do not have permission to shut down the bot.**")
         return
 
