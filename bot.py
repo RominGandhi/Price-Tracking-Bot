@@ -57,14 +57,16 @@ channel_id = int(config["channel_id"])  # Ensure channel_id is an integer
 
 # ✅ Initialize bot
 intents = discord.Intents.default()
-intents.message_content = True  # Required for reading messages
-intents.members = True  # Enable member events (for welcoming users)
+intents.message_content = True
+intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# ✅ Remove built-in help command to avoid conflicts
+bot.remove_command("help")
 
 # ✅ Track active commands to prevent duplicate execution
 active_commands = set()
 bot_started = False  # Prevent multiple instances
-
 
 ### 📌 EVENT: BOT READY ###
 @bot.event
@@ -72,10 +74,11 @@ async def on_ready():
     global bot_started
     if bot_started:
         return  # Prevent multiple executions
-    bot_started = True  # Set flag to True
+    bot_started = True
 
     print(f"✅ Bot logged in as {bot.user}")
     print(f"Bot is in these servers: {[guild.name for guild in bot.guilds]}")  # Debugging
+
     try:
         channel = await bot.fetch_channel(channel_id)
         await channel.send("🚀 Bot is now online and ready!")
@@ -85,9 +88,8 @@ async def on_ready():
     if not price_checker.is_running():
         price_checker.start()
 
-
 ### 📌 COMMAND: ADD PRODUCT ###
-@bot.command()
+@bot.command(name="add_product")
 async def add_product(ctx):
     """Guide the user to add a product step-by-step, storing the user ID."""
     
@@ -118,7 +120,7 @@ async def add_product(ctx):
         msg = await bot.wait_for("message", check=check, timeout=30)
         answers["product_name"] = msg.content.strip()
 
-        # ✅ Step 3: Product URL (Validate)
+        # ✅ Step 3: Product URL
         while True:
             await ctx.send("🔗 **Enter the product URL:**")
             msg = await bot.wait_for("message", check=check, timeout=30)
@@ -131,7 +133,7 @@ async def add_product(ctx):
             answers["url"] = url
             break  # Break loop if valid
 
-        # ✅ Step 4: Target Price (Validate)
+        # ✅ Step 4: Target Price
         while True:
             await ctx.send("💲 **Enter your target price:**")
             msg = await bot.wait_for("message", check=check, timeout=30)
@@ -157,7 +159,7 @@ async def add_product(ctx):
         """, (ctx.author.id, store, answers["product_name"], answers["url"], selector, answers["target_price"]))
         conn.commit()
 
-        # ✅ Confirmation Message with Current Price
+        # ✅ Confirmation Message
         await ctx.send(
             f"✅ **{ctx.author.mention} {answers['product_name']} added!**\n"
             f"💲 **Current Price:** ${current_price:.2f}\n"
@@ -171,9 +173,8 @@ async def add_product(ctx):
     finally:
         active_commands.discard(ctx.author.id)
 
-
 ### 📌 COMMAND: CHECK PRICE ###
-@bot.command()
+@bot.command(name="check_price")
 async def check_price(ctx, product_name: str):
     """Allow users to manually check the current price of their saved product."""
     c.execute("SELECT url, css_selector FROM products WHERE user_id = %s AND product_name ILIKE %s", 
@@ -191,172 +192,6 @@ async def check_price(ctx, product_name: str):
         await ctx.send(f"✅ **{ctx.author.mention} The current price of '{product_name}' is:** 💲${price:.2f}\n🔗 [Product Link]({url})")
     else:
         await ctx.send(f"⚠️ **Could not fetch the price for '{product_name}'.** Please check the URL or try again later.")
-
-
-### 📌 AUTOMATED PRICE CHECK ###
-@tasks.loop(minutes=30)
-async def price_checker():
-    """Automatically check product prices and notify if below or at the target price."""
-    channel = await bot.fetch_channel(channel_id)
-
-    c.execute("SELECT * FROM products")
-    products = c.fetchall()
-
-    for product in products:
-        product_id, user_id, store, product_name, url, css_selector, target_price = product
-        price = await fetch_price_dynamic(url, css_selector)
-
-        if price:
-            mention = f"<@{user_id}>"
-            if price < target_price:
-                await channel.send(f"🔥 **{mention} Price Drop Alert!** {product_name} is now ${price:.2f}!\n🔗 {url}")
-            elif price == target_price:
-                await channel.send(f"🎯 **{mention} Your target price matched!** {product_name} is now ${price:.2f}!\n🔗 {url}")
-
-
-
-### 📌 COMMAND: SET TARGET PRICE ###
-@bot.command()
-async def set_target(ctx, product_name: str, target_price: float):
-    """Allow users to update their target price for a specific product."""
-    c.execute("SELECT * FROM products WHERE user_id = %s AND product_name ILIKE %s", 
-              (ctx.author.id, product_name))
-    product = c.fetchone()
-
-    if not product:
-        await ctx.send(f"⚠️ **No product found with the name '{product_name}' for you.**")
-        return
-
-    c.execute("UPDATE products SET target_price = %s WHERE user_id = %s AND product_name ILIKE %s",
-              (target_price, ctx.author.id, product_name))
-    conn.commit()
-
-    await ctx.send(f"✅ **{ctx.author.mention} Your target price for '{product_name}' has been updated to ${target_price:.2f}!**")
-
-
-### 📌 COMMAND: REMOVE PRODUCT ###
-@bot.command(name="remove_product")
-async def remove_product(ctx, product_name: str):
-    """Allow users to stop tracking a product."""
-    c.execute("DELETE FROM products WHERE user_id = %s AND product_name ILIKE %s", 
-              (ctx.author.id, product_name))
-    
-    if c.rowcount == 0:
-        await ctx.send(f"⚠️ **No product found with the name '{product_name}' for you.**")
-        return
-
-    conn.commit()
-    await ctx.send(f"🗑️ **{ctx.author.mention} You have successfully stopped tracking '{product_name}'.**")
-
-
-### 📌 COMMAND: VIEW ACTIVE ALERTS ###
-@bot.command(name="alerts")
-async def alerts(ctx):
-    """Show all active price alerts for the user."""
-    c.execute("SELECT product_name, target_price FROM products WHERE user_id = %s", (ctx.author.id,))
-    products = c.fetchall()
-
-    if not products:
-        await ctx.send(f"⚠️ **You have no active price alerts.** Use `!add_product` to start tracking.")
-        return
-
-    alert_list = "\n".join([f"🔹 **{name}** → 🎯 Target Price: **${price:.2f}**" for name, price in products])
-    
-    embed = discord.Embed(
-        title="📢 Your Active Price Alerts",
-        description=alert_list,
-        color=discord.Color.green()
-    )
-    await ctx.send(embed=embed)
-
-
-### 📌 COMMAND: LIST TRACKED PRODUCTS ###
-@bot.command()
-async def list_products(ctx):
-    """Show all products the user is currently tracking."""
-    c.execute("SELECT product_name, url FROM products WHERE user_id = %s", (ctx.author.id,))
-    products = c.fetchall()
-
-    if not products:
-        await ctx.send(f"⚠️ **You are not tracking any products.** Use `!add_product` to start tracking.")
-        return
-
-    product_list = "\n".join([f"🔹 **[{name}]({url})**" for name, url in products])
-
-    embed = discord.Embed(
-        title="🛍️ Your Tracked Products",
-        description=product_list,
-        color=discord.Color.blue()
-    )
-    await ctx.send(embed=embed)
-
-
-# ✅ Initialize bot
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-# ✅ Remove built-in help command to avoid conflicts
-bot.remove_command("help")
-
-@bot.command(name="help")
-async def help_menu(ctx):
-    """Engaging help command with categories and emojis."""
-    
-    embed = discord.Embed(
-        title="📌 Price Tracking Bot - Help Menu",
-        description="Welcome to the **Price Tracking Bot**! 🛍️ Get notified when product prices drop!\n\n"
-                    "🔹 **Use the commands below to track products, check prices, and manage your alerts.**",
-        color=discord.Color.blue()
-    )
-
-    # ✅ Product Tracking Commands
-    embed.add_field(
-        name="🛒 **Product Tracking**",
-        value=(
-            "**`!add_product`** → Add a new product for tracking.\n"
-            "**`!check_price <product>`** → Check the current price of a saved product.\n"
-            "**`!list_products`** → View all products you are tracking."
-        ),
-        inline=False
-    )
-
-    # ✅ Price Alert Commands
-    embed.add_field(
-        name="📉 **Price Alerts**",
-        value=(
-            "**`!set_target <product> <price>`** → Set a target price for a product.\n"
-            "**`!remove_product <product>`** → Stop tracking a product.\n"
-            "**`!alerts`** → View all your active price alerts."
-        ),
-        inline=False
-    )
-
-    # ✅ Bot Management
-    embed.add_field(
-        name="⚙️ **Bot Management**",
-        value=(
-            "**`!help`** → Show this help menu.\n"
-            "**`!shutdown`** → (Admin only) Shut down the bot."
-        ),
-        inline=False
-    )
-
-    embed.set_footer(text="🚀 Stay notified and save money on your favorite products!")
-    
-    await ctx.send(embed=embed)
-
-
-### 🛑 SHUTDOWN BOT ###
-@bot.command()
-async def shutdown(ctx):
-    if ctx.author.id != YOUR_DISCORD_USER_ID:
-        await ctx.send("❌ You don't have permission to shut down the bot.")
-        return
-    await ctx.send("🛑 Shutting down bot...")
-    await bot.close()
-
 
 # ✅ Run bot
 bot.run(bot_token)
