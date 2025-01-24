@@ -3,7 +3,9 @@ from discord.ext import commands, tasks
 import json
 import asyncio
 import os
-from tracker import fetch_price_dynamic, load_products, save_products
+import sqlite3
+import re
+from tracker import fetch_price_dynamic
 
 # Load selectors safely
 selectors = {}
@@ -33,6 +35,25 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Track active commands to prevent duplicate execution
 active_commands = set()
 bot_started = False  # Prevent multiple instances
+
+# ✅ Database Connection
+conn = sqlite3.connect("price_tracker.db")
+c = conn.cursor()
+
+# ✅ Create Table if Not Exists
+c.execute("""
+    CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        store TEXT,
+        product_name TEXT,
+        url TEXT,
+        css_selector TEXT,
+        target_price REAL
+    )
+""")
+conn.commit()
+
 
 ### 📌 EVENT: BOT READY ###
 @bot.event
@@ -68,26 +89,49 @@ async def add_product(ctx):
     active_commands.add(ctx.author.id)
 
     try:
-        questions = [
-            "🛒 **Enter the store name** (e.g., walmart.ca, amazon.ca, bestbuy.ca):",
-            "📦 **Enter the product name:**",
-            "🔗 **Enter the product URL:**",
-            "💲 **Enter your target price:**",
-        ]
+        # Store user responses
+        answers = {}
 
-        answers = []
-        for question in questions:
-            await ctx.send(question)
-            msg = await bot.wait_for("message", check=check, timeout=30)
-            answers.append(msg.content.strip())
-
-        store, product_name, url, target_price = answers
-        target_price = float(target_price)
+        # ✅ Step 1: Store Name
+        await ctx.send("🛒 **Enter the store name** (e.g., walmart.ca, amazon.ca, bestbuy.ca):")
+        msg = await bot.wait_for("message", check=check, timeout=30)
+        store = msg.content.strip().lower()
 
         if store not in selectors:
             await ctx.send(f"⚠️ **No selector found for {store}.** Add it to `selectors.json`.")
             return
+        answers["store"] = store
 
+        # ✅ Step 2: Product Name
+        await ctx.send("📦 **Enter the product name:**")
+        msg = await bot.wait_for("message", check=check, timeout=30)
+        answers["product_name"] = msg.content.strip()
+
+        # ✅ Step 3: Product URL (Validate)
+        while True:
+            await ctx.send("🔗 **Enter the product URL:**")
+            msg = await bot.wait_for("message", check=check, timeout=30)
+            url = msg.content.strip()
+
+            if not re.match(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+", url):
+                await ctx.send("⚠️ **Invalid URL! Please enter a valid product link.**")
+                continue  # Ask again if invalid
+
+            answers["url"] = url
+            break  # Break loop if valid
+
+        # ✅ Step 4: Target Price (Validate)
+        while True:
+            await ctx.send("💲 **Enter your target price:**")
+            msg = await bot.wait_for("message", check=check, timeout=30)
+            try:
+                target_price = float(msg.content.strip())
+                answers["target_price"] = target_price
+                break  # Break loop if valid
+            except ValueError:
+                await ctx.send("⚠️ **Invalid price! Please enter a valid number.**")
+
+        # ✅ Fetch Price
         selector = selectors[store]["price"]
         price = await fetch_price_dynamic(url, selector)
 
@@ -95,16 +139,15 @@ async def add_product(ctx):
             await ctx.send("⚠️ **Could not fetch the current price.** Please check the URL.")
             return
 
-        products = load_products()
-        products[product_name] = {
-            "url": url,
-            "css_selector": selector,
-            "target_price": target_price,
-            "user_id": ctx.author.id  # Store the user ID
-        }
-        save_products(products)
+        # ✅ Save to Database
+        c.execute("""
+            INSERT INTO products (user_id, store, product_name, url, css_selector, target_price)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (ctx.author.id, store, answers["product_name"], answers["url"], selector, answers["target_price"]))
+        conn.commit()
 
-        await ctx.send(f"✅ **{ctx.author.mention} {product_name} added!**\n💲 **Current Price:** ${price}\n🎯 **Target Price:** ${target_price}")
+        # ✅ Confirmation Message
+        await ctx.send(f"✅ **{ctx.author.mention} {answers['product_name']} added!**\n💲 **Current Price:** ${price}\n🎯 **Target Price:** ${answers['target_price']}")
 
     except asyncio.TimeoutError:
         await ctx.send("⏳ **You took too long to respond.** Try again!")
@@ -113,68 +156,48 @@ async def add_product(ctx):
         active_commands.discard(ctx.author.id)
 
 
-
-### 📌 COMMAND: CHECK PRODUCT PRICE ###
-@bot.command()
-async def check_price(ctx, product_name: str):
-    """Check the current price of a product."""
-    products = load_products()
-    if (product := products.get(product_name)) is None:
-        await ctx.send(f"⚠️ **Product '{product_name}' not found.**")
-        return
-
-    selector = product.get("css_selector")
-    price = await fetch_price_dynamic(product["url"], selector)
-
-    if price:
-        try:
-            cleaned_price = round(float(price), 2)  # Ensure rounded price
-            target_price = product.get("target_price")
-            response = f"""**{product_name.capitalize()}**
-            💲 **Current Price:** ${cleaned_price:.2f}
-            🎯 **Target Price:** ${target_price:.2f}""" if target_price else ""
-
-            response += f"\n🔗 [Product Link]({product['url']})"
-            await ctx.send(response)
-
-        except ValueError:
-            await ctx.send(f"⚠️ **Could not parse the price for '{product_name}'.** Raw value: {price}")
-    else:
-        await ctx.send(f"⚠️ **Could not fetch the price for '{product_name}'.**")
-
-
 ### 📌 AUTOMATED TASK: PRICE CHECKER ###
 @tasks.loop(minutes=30)
 async def price_checker():
     """Automatically check product prices and notify if below target."""
-    products = load_products()
     channel = await bot.fetch_channel(channel_id)  # Fetch channel
 
-    for product_name, details in products.items():
-        selector = details.get("css_selector")
-        price = await fetch_price_dynamic(details["url"], selector)
+    # ✅ Retrieve products from database
+    c.execute("SELECT * FROM products")
+    products = c.fetchall()
+
+    for product in products:
+        product_id, user_id, store, product_name, url, css_selector, target_price = product
+        price = await fetch_price_dynamic(url, css_selector)
 
         if price:
             try:
                 cleaned_price = float(price)
-                target_price = float(details["target_price"])
-                
-                # If price is at or below target price, send alert
+
+                # ✅ If price drops below target, notify user
                 if cleaned_price <= target_price:
-                    user_id = details.get("user_id")  # Retrieve stored user ID (add this when adding product)
-                    
-                    mention = f"<@{user_id}>" if user_id else ""  # Format mention
+                    mention = f"<@{user_id}>"  # Mention user
                     await channel.send(
                         f"🔥 **{mention} Price Drop Alert!** 🔥\n"
                         f"**{product_name.capitalize()}** is now **${cleaned_price:.2f}!**\n"
                         f"🎯 **Target Price:** ${target_price:.2f}\n"
-                        f"🔗 [Product Link]({details['url']})"
+                        f"🔗 [Product Link]({url})"
                     )
             except ValueError:
                 print(f"⚠️ **Error converting price '{price}' for {product_name}.**")
 
 
+### 🛑 COMMAND: SHUTDOWN BOT (Owner Only) ###
+@bot.command()
+async def shutdown(ctx):
+    """Allow the bot owner to safely shut down the bot."""
+    if ctx.author.id != YOUR_DISCORD_USER_ID:  # Replace with your Discord ID
+        await ctx.send("❌ **You do not have permission to shut down the bot.**")
+        return
+
+    await ctx.send("🛑 **Shutting down bot...**")
+    await bot.close()
 
 
-# Run bot
+# ✅ Run bot
 bot.run(bot_token)
