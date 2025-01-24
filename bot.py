@@ -37,8 +37,17 @@ active_commands = set()
 bot_started = False  # Prevent multiple instances
 
 # ✅ Database Connection
-conn = sqlite3.connect("price_tracker.db")
-c = conn.cursor()
+import psycopg2
+
+DATABASE_URL = os.getenv("DATABASE_URL")  # Ensure it's set in Railway
+
+try:
+    conn = psycopg2.connect(DATABASE_URL)
+    c = conn.cursor()
+    print("✅ Connected to PostgreSQL!")
+except Exception as e:
+    print("❌ Database connection failed:", e)
+
 
 # ✅ Create Table if Not Exists
 c.execute("""
