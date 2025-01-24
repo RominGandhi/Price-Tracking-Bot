@@ -2,3 +2,4 @@ discord.py
 beautifulsoup4
 requests
 playwright
+psycopg2-binary
