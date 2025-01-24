@@ -291,10 +291,16 @@ async def list_products(ctx):
     await ctx.send(embed=embed)
 
 
+# ✅ Initialize bot
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ✅ Remove built-in help command to avoid conflicts
+bot.remove_command("help")
 
-@bot.command()
-@bot.command(name="help_menu")
+@bot.command(name="help")
 async def help_menu(ctx):
     """Engaging help command with categories and emojis."""
     
@@ -331,7 +337,7 @@ async def help_menu(ctx):
     embed.add_field(
         name="⚙️ **Bot Management**",
         value=(
-            "**`!help_menu`** → Show this help menu.\n"
+            "**`!help`** → Show this help menu.\n"
             "**`!shutdown`** → (Admin only) Shut down the bot."
         ),
         inline=False
@@ -340,19 +346,6 @@ async def help_menu(ctx):
     embed.set_footer(text="🚀 Stay notified and save money on your favorite products!")
     
     await ctx.send(embed=embed)
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ### 🛑 SHUTDOWN BOT ###
