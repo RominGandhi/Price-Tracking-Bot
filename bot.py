@@ -105,7 +105,7 @@ async def add_product(ctx):
 
         # ✅ Step 1: Store Name
         await ctx.send("🛒 **Enter the store name** (e.g., walmart.ca, amazon.ca, bestbuy.ca):")
-        msg = await bot.wait_for("message", check=check, timeout=30)
+        msg = await bot.wait_for("message", check=check, timeout=10)
         store = msg.content.strip().lower()
 
         if store not in selectors:
@@ -115,13 +115,13 @@ async def add_product(ctx):
 
         # ✅ Step 2: Product Name
         await ctx.send("📦 **Enter the product name:**")
-        msg = await bot.wait_for("message", check=check, timeout=30)
+        msg = await bot.wait_for("message", check=check, timeout=10)
         answers["product_name"] = msg.content.strip()
 
         # ✅ Step 3: Product URL (Validate)
         while True:
             await ctx.send("🔗 **Enter the product URL:**")
-            msg = await bot.wait_for("message", check=check, timeout=30)
+            msg = await bot.wait_for("message", check=check, timeout=10)
             url = msg.content.strip()
 
             if not re.match(r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+", url):
@@ -134,7 +134,7 @@ async def add_product(ctx):
         # ✅ Step 4: Target Price (Validate)
         while True:
             await ctx.send("💲 **Enter your target price:**")
-            msg = await bot.wait_for("message", check=check, timeout=30)
+            msg = await bot.wait_for("message", check=check, timeout=10)
             try:
                 target_price = float(msg.content.strip())
                 answers["target_price"] = target_price
@@ -194,7 +194,7 @@ async def check_price(ctx, product_name: str):
 
 
 ### 📌 AUTOMATED PRICE CHECK ###
-@tasks.loop(minutes=30)
+@tasks.loop(minutes=10)
 async def price_checker():
     """Automatically check product prices and notify if below or at the target price."""
     channel = await bot.fetch_channel(channel_id)
