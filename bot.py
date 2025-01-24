@@ -250,7 +250,7 @@ async def remove_product(ctx, product_name: str):
 
 
 ### 📌 COMMAND: VIEW ACTIVE ALERTS ###
-@bot.command()
+@bot.command(name="alerts")
 async def alerts(ctx):
     """Show all active price alerts for the user."""
     c.execute("SELECT product_name, target_price FROM products WHERE user_id = %s", (ctx.author.id,))
