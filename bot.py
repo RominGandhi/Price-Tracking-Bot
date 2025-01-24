@@ -142,14 +142,28 @@ async def add_product(ctx):
             except ValueError:
                 await ctx.send("⚠️ **Invalid price! Please enter a valid number.**")
 
+        # ✅ Fetch Current Price
+        selector = selectors[store]["price"]
+        current_price = await fetch_price_dynamic(url, selector)
+
+        if not current_price:
+            await ctx.send("⚠️ **Could not fetch the current price.** Please check the URL.")
+            return
+
         # ✅ Save to Database
         c.execute("""
             INSERT INTO products (user_id, store, product_name, url, css_selector, target_price)
             VALUES (%s, %s, %s, %s, %s, %s)
-        """, (ctx.author.id, store, answers["product_name"], answers["url"], selectors[store]["price"], answers["target_price"]))
+        """, (ctx.author.id, store, answers["product_name"], answers["url"], selector, answers["target_price"]))
         conn.commit()
 
-        await ctx.send(f"✅ **{ctx.author.mention} {answers['product_name']} added!**\n🎯 **Target Price:** ${answers['target_price']}")
+        # ✅ Confirmation Message with Current Price
+        await ctx.send(
+            f"✅ **{ctx.author.mention} {answers['product_name']} added!**\n"
+            f"💲 **Current Price:** ${current_price:.2f}\n"
+            f"🎯 **Target Price:** ${answers['target_price']:.2f}\n"
+            f"🔗 [Product Link]({url})"
+        )
 
     except asyncio.TimeoutError:
         await ctx.send("⏳ **You took too long to respond.** Try again!")
