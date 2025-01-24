@@ -294,7 +294,8 @@ async def list_products(ctx):
 
 
 @bot.command()
-async def help(ctx):
+@bot.command(name="help_menu")
+async def help_menu(ctx):
     """Engaging help command with categories and emojis."""
     
     embed = discord.Embed(
@@ -330,7 +331,7 @@ async def help(ctx):
     embed.add_field(
         name="⚙️ **Bot Management**",
         value=(
-            "**`!help`** → Show this help menu.\n"
+            "**`!help_menu`** → Show this help menu.\n"
             "**`!shutdown`** → (Admin only) Shut down the bot."
         ),
         inline=False
@@ -339,7 +340,6 @@ async def help(ctx):
     embed.set_footer(text="🚀 Stay notified and save money on your favorite products!")
     
     await ctx.send(embed=embed)
-
 
 
 
