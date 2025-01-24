@@ -235,7 +235,7 @@ async def set_target(ctx, product_name: str, target_price: float):
 
 
 ### 📌 COMMAND: REMOVE PRODUCT ###
-@bot.command()
+@bot.command(name="remove_product")
 async def remove_product(ctx, product_name: str):
     """Allow users to stop tracking a product."""
     c.execute("DELETE FROM products WHERE user_id = %s AND product_name ILIKE %s", 
