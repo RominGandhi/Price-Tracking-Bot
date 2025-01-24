@@ -295,7 +295,6 @@ async def list_products(ctx):
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ✅ Remove built-in help command to avoid conflicts
 bot.remove_command("help")
