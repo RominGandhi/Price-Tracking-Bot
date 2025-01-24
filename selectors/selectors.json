@@ -10,7 +10,7 @@
         "price": "span[data-automation='product-price']"
     },
     "sephora.com": {
-        "price": "p[data-comp='Price'] b"
+        "price": ".css-1d0a4l3.e15t2tov0"
     }
 }
  
