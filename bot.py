@@ -236,17 +236,35 @@ async def set_target(ctx, product_name: str, target_price: float):
 
 ### 📌 COMMAND: REMOVE PRODUCT ###
 @bot.command(name="remove_product")
-async def remove_product(ctx, product_name: str):
-    """Allow users to stop tracking a product."""
-    c.execute("DELETE FROM products WHERE user_id = %s AND product_name ILIKE %s", 
-              (ctx.author.id, product_name))
+async def remove_product(ctx, *, product_name: str):
+    """Allow users to stop tracking a product using flexible name matching."""
     
-    if c.rowcount == 0:
+    # Fetch all products tracked by the user
+    c.execute("SELECT product_name FROM products WHERE user_id = %s", (ctx.author.id,))
+    products = c.fetchall()
+    
+    # Check if user has any products
+    if not products:
+        await ctx.send(f"⚠️ **You are not tracking any products.**")
+        return
+
+    # Normalize product names for case-insensitive matching
+    product_names = [p[0].strip().lower() for p in products]
+    search_name = product_name.strip().lower()
+
+    # Find the best match
+    matched_product = next((p for p in product_names if search_name in p), None)
+
+    if not matched_product:
         await ctx.send(f"⚠️ **No product found with the name '{product_name}' for you.**")
         return
 
+    # Perform the deletion
+    c.execute("DELETE FROM products WHERE user_id = %s AND LOWER(product_name) = %s", 
+              (ctx.author.id, matched_product))
+    
     conn.commit()
-    await ctx.send(f"🗑️ **{ctx.author.mention} You have successfully stopped tracking '{product_name}'.**")
+    await ctx.send(f"🗑️ **{ctx.author.mention} You have successfully stopped tracking '{matched_product}'.**")
 
 
 ### 📌 COMMAND: VIEW ACTIVE ALERTS ###
